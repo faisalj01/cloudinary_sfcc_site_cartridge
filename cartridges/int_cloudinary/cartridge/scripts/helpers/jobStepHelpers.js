@@ -172,7 +172,12 @@ var uploadFile = function (cloudinaryConstants, asset, tags, assignedFolder, ass
     args.file = asset;
     uploadResult = cloudinarySvc.uploadAsset(args);
 
+    if (uploadResult.ok && Array.isArray(svcArgs.uploadedPublicIds) && uploadResult.resultObj && !empty(uploadResult.resultObj.public_id)) {
+        svcArgs.uploadedPublicIds.push(uploadResult.resultObj.public_id);
+    }
+
     if (!uploadResult.ok) {
+        svcArgs.uploadFailed = true;
         if (uploadResult.errorCode === cloudinaryConstants.ERROR_CODES.UNAUTHORIZED) {
             jobLogger.error('Error occurred while connecting with service due to invalid credentials, message: {0}', uploadResult.message);
         } else {
@@ -342,6 +347,109 @@ var getCldUploadSvcArgs = function () {
 };
 
 /**
+ * Resets the upload tracking of the service arguments, to be called before uploading the assets of a product.
+ *
+ * @param {Object} svcArgs - data related to service
+ */
+var startUploadTracking = function (svcArgs) {
+    svcArgs.uploadedPublicIds = [];
+    svcArgs.uploadFailed = false;
+};
+
+/**
+ * Records the assets uploaded for a product so that its stale assets can be removed at the end of the run.
+ * Products with a failed upload are not recorded, but their uploaded assets are always kept.
+ *
+ * @param {Object} svcArgs - data related to service
+ * @param {string} productIdentifier - value of the sfcc-product-identifier metadata
+ */
+var trackProductUploads = function (svcArgs, productIdentifier) {
+    var jobLogger = require('dw/system').Logger.getLogger('Cloudinary', 'UPLOAD');
+
+    var uploadedPublicIds = svcArgs.uploadedPublicIds || [];
+    var uploadFailed = svcArgs.uploadFailed;
+
+    startUploadTracking(svcArgs);
+    svcArgs.cleanupProducts = svcArgs.cleanupProducts || [];
+    svcArgs.keptPublicIds = svcArgs.keptPublicIds || {};
+
+    uploadedPublicIds.forEach(function (publicId) {
+        svcArgs.keptPublicIds[publicId] = true;
+    });
+
+    if (uploadFailed) {
+        jobLogger.warn('Skipping stale asset cleanup for product {0}, some of its uploads failed', productIdentifier);
+        return;
+    }
+
+    if (uploadedPublicIds.length === 0 || empty(productIdentifier)) {
+        return;
+    }
+
+    svcArgs.cleanupProducts.push({ productIdentifier: productIdentifier, uploadedPublicIds: uploadedPublicIds });
+};
+
+/**
+ * Deletes from Cloudinary the assets of the recorded products that were not uploaded in the current run.
+ * Only assets living in the folders where a product uploaded are considered, and assets uploaded for any product are kept.
+ *
+ * @param {Object} svcArgs - data related to service
+ * @param {string} viewType - value of the sfcc-view-type metadata
+ */
+var removeStaleAssets = function (svcArgs, viewType) {
+    var cleanupSvc = require('~/cartridge/scripts/service/cldAssetCleanup');
+
+    var cleanupProducts = svcArgs.cleanupProducts || [];
+    var keptPublicIds = svcArgs.keptPublicIds || {};
+    var assetsByFolder = {};
+    var staleAssets = [];
+
+    svcArgs.cleanupProducts = [];
+    svcArgs.keptPublicIds = {};
+
+    if (cleanupProducts.length === 0 || empty(viewType)) {
+        return;
+    }
+
+    var args = svcArgs.svcConfigArgs;
+    args.servicePrefs = svcArgs.servicePrefs;
+    args.cldUploadSvc = svcArgs.cldUploadSvc;
+
+    cleanupProducts.forEach(function (cleanupProduct) {
+        var productFolders = {};
+        cleanupProduct.uploadedPublicIds.forEach(function (publicId) {
+            productFolders[publicId.substring(0, publicId.lastIndexOf('/'))] = true;
+        });
+
+        Object.keys(productFolders).forEach(function (folder) {
+            if (empty(folder)) {
+                return;
+            }
+
+            if (!(folder in assetsByFolder)) {
+                assetsByFolder[folder] = cleanupSvc.searchAssetsByFolder(args, folder, viewType);
+            }
+
+            var folderAssets = assetsByFolder[folder];
+            if (!folderAssets || !folderAssets[cleanupProduct.productIdentifier]) {
+                return;
+            }
+
+            folderAssets[cleanupProduct.productIdentifier].forEach(function (asset) {
+                if (!keptPublicIds[asset.publicId]) {
+                    keptPublicIds[asset.publicId] = true;
+                    staleAssets.push(asset);
+                }
+            });
+        });
+    });
+
+    if (staleAssets.length > 0) {
+        cleanupSvc.deleteAssets(args, staleAssets);
+    }
+};
+
+/**
  * Loops over folder/file list recursively and uploads each asset.
  *
  * @param {Object} currentFolder - the current folder
@@ -486,6 +594,9 @@ module.exports = {
     buildLibraryAssetURL: buildLibraryAssetURL,
     buildCatalogAssetURL: buildCatalogAssetURL,
     uploadFile: uploadFile,
+    startUploadTracking: startUploadTracking,
+    trackProductUploads: trackProductUploads,
+    removeStaleAssets: removeStaleAssets,
     getAssetRelURL: getAssetRelURL,
     logAssetLargerThanLimitMsg: logAssetLargerThanLimitMsg,
     changePublicIdAndCloudFolder: changePublicIdAndCloudFolder,
