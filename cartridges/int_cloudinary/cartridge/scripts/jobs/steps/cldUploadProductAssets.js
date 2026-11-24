@@ -2,7 +2,7 @@
 
 var changedFilesCount = 0;
 var hasProcessingError = false;
-var staleAssetTracker = null;
+var cleanupTracker = null;
 
 /**
  * Build tags for asset based on product attributes.
@@ -406,9 +406,9 @@ var doProducts = function (args, products, metadataFields, isSearchHits, syncMod
                 }
             }
 
-            if (staleAssetTracker) {
+            if (cleanupTracker) {
                 productIdentifier = cloudinaryHelper.getCloudinaryTagName(product);
-                jobStepHelpers.trackProductUploads(svcArgs, staleAssetTracker, !empty(productIdentifier) ? productIdentifier : product.ID);
+                jobStepHelpers.trackProductUploads(svcArgs, cleanupTracker, !empty(productIdentifier) ? productIdentifier : product.ID);
             }
         } else if (!empty(productImages) && productImages.length > 0) {
             productTagName = cloudinaryHelper.getCloudinaryTagName(product);
@@ -466,13 +466,13 @@ var doProducts = function (args, products, metadataFields, isSearchHits, syncMod
                 }
             }
 
-            if (staleAssetTracker) {
-                jobStepHelpers.trackProductUploads(svcArgs, staleAssetTracker, !empty(productTagName) ? productTagName : product.ID);
+            if (cleanupTracker) {
+                jobStepHelpers.trackProductUploads(svcArgs, cleanupTracker, !empty(productTagName) ? productTagName : product.ID);
             }
-        } else if (staleAssetTracker) {
+        } else if (cleanupTracker) {
             productTagName = cloudinaryHelper.getCloudinaryTagName(product);
             jobStepHelpers.startUploadTracking(svcArgs);
-            jobStepHelpers.trackProductUploads(svcArgs, staleAssetTracker, !empty(productTagName) ? productTagName : product.ID);
+            jobStepHelpers.trackProductUploads(svcArgs, cleanupTracker, !empty(productTagName) ? productTagName : product.ID);
         }
 
         if (args.CLDJobExecutionMode === cloudinaryConstants.DEBUG_EXECUTION_MODE && assetsLimitCount === assetsLimit) {
@@ -585,11 +585,11 @@ module.exports.Start = function (args) {
             return new Status(Status.ERROR);
         }
 
-        staleAssetTracker = ['true', true].indexOf(args.CLDRemoveStaleAssets) > -1
+        cleanupTracker = ['true', true].indexOf(args.CLDRemoveAssetsDeletedInSFCC) > -1
             && executionMode !== cloudinaryConstants.DEBUG_EXECUTION_MODE
             && executionMode !== cloudinaryConstants.PROD_BACK_FILE_EXECUTION_MODE
             && syncMode !== cloudinaryConstants.SYNC_MODE_DELTA
-            ? jobStepHelpers.createStaleAssetTracker() : null;
+            ? jobStepHelpers.createCleanupTracker() : null;
 
         if (!empty(catalogsToProcess)) {
             var ProductMgr = require('dw/catalog/ProductMgr');
@@ -613,11 +613,11 @@ module.exports.Start = function (args) {
             doProducts(args, productSearchHitsItr, metadataFields, isSearchHits, syncMode, lastJobExecution);
         }
 
-        if (staleAssetTracker) {
+        if (cleanupTracker) {
             try {
-                jobStepHelpers.removeStaleAssets(jobStepHelpers.getCldUploadSvcArgs(), staleAssetTracker, viewType);
+                jobStepHelpers.removeDeletedAssets(jobStepHelpers.getCldUploadSvcArgs(), cleanupTracker, viewType);
             } catch (e) {
-                jobLogger.error('Error occurred while removing stale assets, message: {0}', e.message);
+                jobLogger.error('Error occurred while removing deleted assets, message: {0}', e.message);
             }
         }
 

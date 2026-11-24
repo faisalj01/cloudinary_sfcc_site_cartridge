@@ -54,7 +54,7 @@ function searchAssetsByProducts(args, productIdentifiers, viewType) {
             for (var idx = 0; idx < resources.length; idx++) {
                 var resource = resources[idx];
                 if (empty(resource.metadata)) {
-                    logger.error('Structured metadata is not returned by the Cloudinary search of products {0}, skipping stale asset cleanup', products);
+                    logger.error('Structured metadata is not returned by the Cloudinary search of products {0}, skipping asset cleanup', products);
                     return null;
                 }
 
@@ -107,12 +107,12 @@ function deleteAssets(args, assets) {
 
                 var result = service.call();
                 if (result.ok && result.error === 0) {
-                    logger.info('Deleted stale {0} assets from Cloudinary: {1}', resourceType, JSON.stringify(result.object.deleted));
+                    logger.info('Deleted {0} assets from Cloudinary: {1}', resourceType, JSON.stringify(result.object.deleted));
                 } else {
-                    logger.error('Error deleting stale {0} assets: {1}, message: {2}', resourceType, publicIds.join(', '), result.errorMessage);
+                    logger.error('Error deleting {0} assets: {1}, message: {2}', resourceType, publicIds.join(', '), result.errorMessage);
                 }
             } catch (e) {
-                logger.error('Error deleting stale {0} assets: {1}, message: {2}', resourceType, publicIds.join(', '), e.message);
+                logger.error('Error deleting {0} assets: {1}, message: {2}', resourceType, publicIds.join(', '), e.message);
             }
         }
     });

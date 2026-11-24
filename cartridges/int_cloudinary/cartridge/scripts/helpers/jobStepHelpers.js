@@ -359,9 +359,9 @@ var startUploadTracking = function (svcArgs) {
 /**
  * Creates the tracker holding the products, folders and assets uploaded during the whole job run.
  *
- * @returns {Object} stale asset tracker
+ * @returns {Object} cleanup tracker
  */
-var createStaleAssetTracker = function () {
+var createCleanupTracker = function () {
     return {
         products: {},
         failedProducts: {},
@@ -371,11 +371,11 @@ var createStaleAssetTracker = function () {
 };
 
 /**
- * Records the assets uploaded for a product so that its stale assets can be removed at the end of the run.
+ * Records the assets uploaded for a product so that its deleted assets can be removed at the end of the run.
  * Products with a failed upload are not cleaned up, but their uploaded assets are always kept.
  *
  * @param {Object} svcArgs - data related to service
- * @param {Object} tracker - stale asset tracker of the job run
+ * @param {Object} tracker - cleanup tracker of the job run
  * @param {string} productIdentifier - value of the sfcc-product-identifier metadata
  */
 var trackProductUploads = function (svcArgs, tracker, productIdentifier) {
@@ -396,7 +396,7 @@ var trackProductUploads = function (svcArgs, tracker, productIdentifier) {
     }
 
     if (uploadFailed) {
-        jobLogger.warn('Skipping stale asset cleanup for product {0}, some of its uploads failed', productIdentifier);
+        jobLogger.warn('Skipping asset cleanup for product {0}, some of its uploads failed', productIdentifier);
         tracker.failedProducts[productIdentifier] = true;
         return;
     }
@@ -409,14 +409,14 @@ var trackProductUploads = function (svcArgs, tracker, productIdentifier) {
  * Only assets living in the folders where the run uploaded are considered, and assets uploaded for any product are kept.
  *
  * @param {Object} svcArgs - data related to service
- * @param {Object} tracker - stale asset tracker of the job run
+ * @param {Object} tracker - cleanup tracker of the job run
  * @param {string} viewType - value of the sfcc-view-type metadata
  */
-var removeStaleAssets = function (svcArgs, tracker, viewType) {
+var removeDeletedAssets = function (svcArgs, tracker, viewType) {
     var cleanupSvc = require('~/cartridge/scripts/service/cldAssetCleanup');
 
     var batchSize = 50;
-    var staleAssets = [];
+    var assetsToDelete = [];
     var productIdentifiers = Object.keys(tracker.products).filter(function (productIdentifier) {
         return !tracker.failedProducts[productIdentifier];
     });
@@ -441,14 +441,14 @@ var removeStaleAssets = function (svcArgs, tracker, viewType) {
                 var folder = asset.publicId.substring(0, asset.publicId.lastIndexOf('/'));
                 if (tracker.folders[folder] && !tracker.keptPublicIds[asset.publicId]) {
                     tracker.keptPublicIds[asset.publicId] = true;
-                    staleAssets.push(asset);
+                    assetsToDelete.push(asset);
                 }
             });
         });
     }
 
-    if (staleAssets.length > 0) {
-        cleanupSvc.deleteAssets(args, staleAssets);
+    if (assetsToDelete.length > 0) {
+        cleanupSvc.deleteAssets(args, assetsToDelete);
     }
 };
 
@@ -597,10 +597,10 @@ module.exports = {
     buildLibraryAssetURL: buildLibraryAssetURL,
     buildCatalogAssetURL: buildCatalogAssetURL,
     uploadFile: uploadFile,
-    createStaleAssetTracker: createStaleAssetTracker,
+    createCleanupTracker: createCleanupTracker,
     startUploadTracking: startUploadTracking,
     trackProductUploads: trackProductUploads,
-    removeStaleAssets: removeStaleAssets,
+    removeDeletedAssets: removeDeletedAssets,
     getAssetRelURL: getAssetRelURL,
     logAssetLargerThanLimitMsg: logAssetLargerThanLimitMsg,
     changePublicIdAndCloudFolder: changePublicIdAndCloudFolder,
