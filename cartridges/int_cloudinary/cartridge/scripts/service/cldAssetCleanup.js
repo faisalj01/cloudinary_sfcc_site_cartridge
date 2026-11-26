@@ -85,7 +85,7 @@ function deleteAssets(args, assets) {
 
     var prefs = args.servicePrefs;
     var service = args.cldUploadSvc;
-    var batchSize = 100;
+    var batchSize = 30;
     var idsByType = {};
 
     assets.forEach(function (asset) {
